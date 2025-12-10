@@ -1,6 +1,5 @@
-// --- ⚙️ FAKE DATA/MOCK API FUNCTIONS (Replace with your actual backend/DB calls) ---
+// --- ⚙️ FAKE DATA/MOCK API FUNCTIONS ---
 
-// In a real application, you'd make fetch/axios calls to your server for these.
 const FAKE_USER_DATA = {
     username: "user123",
     email: "test@example.com",
@@ -8,18 +7,16 @@ const FAKE_USER_DATA = {
     joined: "2024-01-01"
 };
 
+// Updated to have multiple videos for proper list testing
 const FAKE_VIDEOS_DATA = [
     { videoId: "v101", thumbnailId: "t101", title: "Video Title One" },
     { videoId: "v102", thumbnailId: "t102", title: "Exciting Video Two" },
     { videoId: "v103", thumbnailId: "t103", title: "A Third Content Piece" },
-    // ... more videos
+    { videoId: "v104", thumbnailId: "t104", title: "Final Video Four" },
 ];
 
-// Mock function to check authentication state
 let isLoggedIn = false; 
 
-// The 'db' structure you mentioned: videos/<uniqueid>/(videoId, thumbnailId, title)
-// 'uniqueid' is assumed to be the index in the FAKE_VIDEOS_DATA array here for simplicity.
 function getVideoData(index) {
     if (index >= 0 && index < FAKE_VIDEOS_DATA.length) {
         return FAKE_VIDEOS_DATA[index];
@@ -27,16 +24,23 @@ function getVideoData(index) {
     return null;
 }
 
-// Function to generate the Telegram download link
-// **IMPORTANT**: You need to replace this with your actual logic to convert 
-// Telegram File ID (thumbnailId/videoId) into a direct download URL.
+// Function to generate the Telegram download link (CRITICAL: Needs backend)
 function getTelegramDownloadLink(fileId) {
-    // This is a PLACEHOLDER. Your backend needs to serve the file ID securely.
-    // Example: return `https://yourdomain.com/api/download/${fileId}`;
-    return `https://placeholder.com/download/${fileId}`; 
+    // 🛑 IMPORTANT: This URL must point to YOUR SERVER endpoint (e.g., Node.js/Python server)
+    // YOUR SERVER will use the Telegram Bot API to convert the File ID (t101, v101) 
+    // into a streamable URL.
+
+    // Placeholder URL for demonstration. Replace with your actual API endpoint:
+    // return `https://your-backend.com/api/getfile/${fileId}`;
+
+    // --- TEMPORARY FIX: Showing a Placeholder image for UI testing ---
+    if (fileId.startsWith('t')) {
+        return "https://via.placeholder.com/250x150?text=Telegram+Thumbnail";
+    }
+    // For video, we need a real link, or it won't play. Returning null will trigger an alert.
+    return null; 
 }
 
-// Function to add video to history (Mock)
 function addToHistory(videoTitle) {
     let history = JSON.parse(localStorage.getItem('userHistory') || '[]');
     const newEntry = { title: videoTitle, watchedAt: new Date().toLocaleString() };
@@ -49,30 +53,48 @@ function addToHistory(videoTitle) {
 
 const appContainer = document.getElementById('app-container');
 
-// Renders the Login/Register/Email Verification screen
+// Renders the main structure with navigation
+function renderMainLayout(contentHTML) {
+    appContainer.innerHTML = `
+        <header>
+            <h1>Video App</h1>
+            <nav>
+                <button onclick="navigate('home')" class="btn secondary-btn">🏠 Home</button>
+                <button onclick="navigate('history')" class="btn secondary-btn">📜 History</button>
+                <button onclick="navigate('profile')" class="btn secondary-btn">👤 Profile</button>
+                <button onclick="logout()" class="btn primary-btn">👋 Logout</button>
+            </nav>
+        </header>
+        <main id="main-content">
+            ${contentHTML}
+        </main>
+    `;
+}
+
 function renderAuthScreen() {
     appContainer.innerHTML = `
-        <h2>Login / Register</h2>
-        <form id="auth-form">
-            <input type="email" id="auth-email" placeholder="Email" required><br>
-            <input type="password" id="auth-password" placeholder="Password" required><br>
-            <input type="text" id="auth-username" placeholder="Username (for register)" style="display:none;"><br>
-            <button type="submit" data-mode="login">Login</button>
-            <button type="button" id="toggle-register">Switch to Register</button>
-        </form>
-        <p id="auth-message" style="color:red;"></p>
+        <div class="auth-container">
+            <h2>Login / Register / Email Verification</h2>
+            <form id="auth-form" class="form-card">
+                <input type="email" id="auth-email" placeholder="Email" required class="input-field"><br>
+                <input type="password" id="auth-password" placeholder="Password" required class="input-field"><br>
+                <input type="text" id="auth-username" placeholder="Username (for register)" class="input-field" style="display:none;"><br>
+                <button type="submit" data-mode="login" class="btn primary-btn">Login</button>
+                <button type="button" id="toggle-register" class="btn secondary-btn">Switch to Register</button>
+            </form>
+            <p id="auth-message" class="error-message"></p>
+        </div>
     `;
 
     // Handle form submission (Login/Register)
     document.getElementById('auth-form').addEventListener('submit', function(e) {
         e.preventDefault();
         const mode = e.submitter.getAttribute('data-mode');
-        // 1. **SEND DATA TO SERVER** (Login, Register, or Email Verification)
-        // 2. **IF SUCCESSFUL**:
-        if (mode === 'login' || mode === 'register') {
-            // Faking success and moving to verification
-            renderEmailVerificationScreen('test@example.com');
-        }
+        // In a real app, send data to server here.
+        
+        // Faking success and moving to verification
+        const email = document.getElementById('auth-email').value;
+        renderEmailVerificationScreen(email);
     });
 
     // Handle switching between Login and Register
@@ -94,18 +116,18 @@ function renderAuthScreen() {
 }
 
 
-// Renders the Email Verification screen
 function renderEmailVerificationScreen(email) {
     appContainer.innerHTML = `
-        <h2>Email Verification</h2>
-        <p>A verification link has been sent to <strong>${email}</strong>.</p>
-        <p>Please click the link to verify your account.</p>
-        <button id="resend-email">Resend Email</button>
-        <button id="fake-verify">I have verified (Faking)</button>
+        <div class="auth-container">
+            <h2>Email Verification</h2>
+            <p>A verification link has been sent to <strong>${email}</strong>.</p>
+            <p>Please click the link to verify your account.</p>
+            <button id="resend-email" class="btn secondary-btn">Resend Email</button>
+            <button id="fake-verify" class="btn primary-btn" style="margin-left: 10px;">I have verified (Faking)</button>
+        </div>
     `;
     
-    // In a real app, the verification link clicked by the user would change 'isLoggedIn' 
-    // and then call navigate('home'). We'll fake it here.
+    // Faking verification success to proceed to Home
     document.getElementById('fake-verify').addEventListener('click', () => {
         isLoggedIn = true;
         navigate('home');
@@ -113,63 +135,49 @@ function renderEmailVerificationScreen(email) {
 }
 
 
-// Renders the main content (Home, History, Profile)
-function renderMainLayout(contentHTML) {
-    appContainer.innerHTML = `
-        <header>
-            <h1>Video App</h1>
-            <nav>
-                <button onclick="navigate('home')">🏠 Home</button>
-                <button onclick="navigate('history')">📜 History</button>
-                <button onclick="navigate('profile')">👤 Profile</button>
-                <button onclick="logout()">👋 Logout</button>
-            </nav>
-        </header>
-        <main id="main-content">
-            ${contentHTML}
-        </main>
-    `;
-}
-
-// Renders the Home screen (Video List)
+// Renders the Home screen (Video List) - FIXED LISTING
 function renderHomeScreen() {
-    let videoListHTML = FAKE_VIDEOS_DATA.map((video, index) => {
-        // 1. Create Telegram Download Link for Thumbnail
+    const videoListHTML = FAKE_VIDEOS_DATA.map((video, index) => {
+        // 1. Create Telegram Download Link for Thumbnail (Placeholder used)
         const thumbnailUrl = getTelegramDownloadLink(video.thumbnailId); 
         
         return `
-            <div class="video-item" data-video-index="${index}" onclick="playVideo(${index})">
-                <img src="${thumbnailUrl}" alt="Video Thumbnail" style="width:200px; height:150px; object-fit:cover;">
-                <p>${video.title}</p>
+            <div class="video-card" data-video-index="${index}" onclick="playVideo(${index})">
+                <img src="${thumbnailUrl}" alt="${video.title} Thumbnail" class="video-thumbnail">
+                <div class="video-title">${video.title}</div>
             </div>
         `;
     }).join('');
 
     const homeContent = `
-        <h2>Home - Video List</h2>
-        <div id="video-grid">
+        <div class="page-header">
+            <h2>Home - Video List</h2>
+        </div>
+        <div id="video-grid" class="grid-layout">
             ${videoListHTML}
         </div>
-        <div id="video-player" style="margin-top: 20px;"></div>
+        <div id="video-player" class="video-player-container"></div>
     `;
     
     renderMainLayout(homeContent);
 }
 
 
-// Renders the History screen
 function renderHistoryScreen() {
     const history = JSON.parse(localStorage.getItem('userHistory') || '[]');
     
-    let historyList = '<h3>No history yet.</h3>';
+    let historyList = '<p><h3>No history yet. Start watching!</h3></p>';
     if (history.length > 0) {
-        historyList = '<ul>' + history.map(item => 
-            `<li>**${item.title}** - Watched on ${item.watchedAt}</li>`
+        // Reverse history so latest video is at the top
+        historyList = '<ul class="history-list">' + history.reverse().map(item => 
+            `<li>**${item.title}** - Watched on <em>${item.watchedAt}</em></li>`
         ).join('') + '</ul>';
     }
 
     const historyContent = `
-        <h2>History</h2>
+        <div class="page-header">
+            <h2>History</h2>
+        </div>
         ${historyList}
     `;
     
@@ -177,18 +185,19 @@ function renderHistoryScreen() {
 }
 
 
-// Renders the Profile screen
 function renderProfileScreen() {
     const user = FAKE_USER_DATA; // Replace with actual logged-in user data from server
     const profileContent = `
-        <h2>Profile</h2>
-        <table>
+        <div class="page-header">
+            <h2>Profile - User Details</h2>
+        </div>
+        <table class="profile-table">
             <tr><th>Username:</th><td>${user.username}</td></tr>
             <tr><th>Name:</th><td>${user.name}</td></tr>
             <tr><th>Email:</th><td>${user.email}</td></tr>
             <tr><th>Member Since:</th><td>${user.joined}</td></tr>
         </table>
-        `;
+    `;
     
     renderMainLayout(profileContent);
 }
@@ -197,21 +206,27 @@ function renderProfileScreen() {
 // --- 🎬 VIDEO PLAYBACK AND NAVIGATION ---
 
 // Function to handle video play
-function playVideo(index) {
+window.playVideo = function(index) {
     const videoData = getVideoData(index);
     if (!videoData) return;
     
-    // 1. Create Telegram Download Link for Video
+    // 1. IMPORTANT: Get the actual video stream URL
     const videoUrl = getTelegramDownloadLink(videoData.videoId);
 
+    if (!videoUrl) {
+         // Since we are using a placeholder, this alert will show. 
+         alert("Cannot play video: Telegram Video ID needs to be converted to a direct URL by your backend server.");
+         return;
+    }
+    
     // 2. Add to History
     addToHistory(videoData.title); 
 
     // 3. Render the Video Player
     const playerDiv = document.getElementById('video-player');
     playerDiv.innerHTML = `
-        <h3>Now Playing: ${videoData.title}</h3>
-        <video width="640" height="360" controls autoplay>
+        <h3 class="player-title">Now Playing: ${videoData.title}</h3>
+        <video controls autoplay class="video-element">
             <source src="${videoUrl}" type="video/mp4">
             Your browser does not support the video tag.
         </video>
@@ -248,17 +263,14 @@ function navigate(screen) {
 }
 
 // Logout function
-function logout() {
-    isLoggedIn = false; // Clear auth state (or clear token in real app)
-    localStorage.removeItem('userHistory'); // Optional: clear local data
+window.logout = function() {
+    isLoggedIn = false; 
+    localStorage.removeItem('userHistory'); 
     navigate('auth');
 }
 
 // --- 🚀 INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Check if the user is already logged in (e.g., check for a valid token in localStorage)
-    // For this example, we start with the auth screen.
+    // Start with the authentication screen
     navigate('auth'); 
 });
-
-               
