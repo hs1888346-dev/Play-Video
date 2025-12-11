@@ -11,6 +11,18 @@
         Loading application...
     </div>
 
+    <!-- Filters injected dynamically -->
+    <div id="filters-container"></div>
+
+    <!-- Video Playback Dialog -->
+    <div id="video-dialog" class="video-dialog hidden">
+        <div class="video-dialog-content">
+            <span id="close-dialog" class="close-btn">&times;</span>
+            <h3 id="player-title"></h3>
+            <video id="player-video" controls autoplay class="video-element"></video>
+        </div>
+    </div>
+
     <script src="filter.js"></script>
     <script src="app.js"></script>
 </body>
