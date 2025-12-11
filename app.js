@@ -1,4 +1,4 @@
-// --- ⚙️ FAKE DATA/MOCK API FUNCTIONS ---
+// ------------------ FAKE DATA / UI (unchanged mostly) ------------------
 
 const FAKE_USER_DATA = {
     username: "user123",
@@ -7,7 +7,6 @@ const FAKE_USER_DATA = {
     joined: "2024-01-01"
 };
 
-// Updated to have multiple videos for proper list testing
 const FAKE_VIDEOS_DATA = [
     { videoId: "v101", thumbnailId: "t101", title: "Video Title One" },
     { videoId: "v102", thumbnailId: "t102", title: "Exciting Video Two" },
@@ -24,20 +23,10 @@ function getVideoData(index) {
     return null;
 }
 
-// Function to generate the Telegram download link (CRITICAL: Needs backend)
 function getTelegramDownloadLink(fileId) {
-    // 🛑 IMPORTANT: This URL must point to YOUR SERVER endpoint (e.g., Node.js/Python server)
-    // YOUR SERVER will use the Telegram Bot API to convert the File ID (t101, v101) 
-    // into a streamable URL.
-
-    // Placeholder URL for demonstration. Replace with your actual API endpoint:
-    // return `https://your-backend.com/api/getfile/${fileId}`;
-
-    // --- TEMPORARY FIX: Showing a Placeholder image for UI testing ---
     if (fileId.startsWith('t')) {
         return "https://via.placeholder.com/250x150?text=Telegram+Thumbnail";
     }
-    // For video, we need a real link, or it won't play. Returning null will trigger an alert.
     return null; 
 }
 
@@ -48,12 +37,10 @@ function addToHistory(videoTitle) {
     localStorage.setItem('userHistory', JSON.stringify(history));
 }
 
-
-// --- 🖼️ UI RENDERING FUNCTIONS ---
+// ------------------ UI RENDERING ------------------
 
 const appContainer = document.getElementById('app-container');
 
-// Renders the main structure with navigation
 function renderMainLayout(contentHTML) {
     appContainer.innerHTML = `
         <header>
@@ -72,9 +59,16 @@ function renderMainLayout(contentHTML) {
 }
 
 function renderAuthScreen() {
+    // If already logged in and email verified, go home
+    const current = firebase.auth().currentUser;
+    if (current && current.emailVerified) {
+        isLoggedIn = true;
+        return navigate('home');
+    }
+
     appContainer.innerHTML = `
         <div class="auth-container">
-            <h2>Login / Register / Email Verification</h2>
+            <h2>Login / Register</h2>
             <form id="auth-form" class="form-card">
                 <input type="email" id="auth-email" placeholder="Email" required class="input-field"><br>
                 <input type="password" id="auth-password" placeholder="Password" required class="input-field"><br>
@@ -86,18 +80,47 @@ function renderAuthScreen() {
         </div>
     `;
 
-    // Handle form submission (Login/Register)
-    document.getElementById('auth-form').addEventListener('submit', function(e) {
+    // Form submit - handle login or register
+    document.getElementById('auth-form').addEventListener('submit', async function(e) {
         e.preventDefault();
         const mode = e.submitter.getAttribute('data-mode');
-        // In a real app, send data to server here.
-        
-        // Faking success and moving to verification
         const email = document.getElementById('auth-email').value;
-        renderEmailVerificationScreen(email);
+        const password = document.getElementById('auth-password').value;
+        const username = document.getElementById('auth-username').value;
+        const msgEl = document.getElementById('auth-message');
+        msgEl.textContent = '';
+
+        try {
+            if (mode === 'login') {
+                // Sign in with Firebase
+                const userCred = await firebase.auth().signInWithEmailAndPassword(email, password);
+                const user = userCred.user;
+                if (user && user.emailVerified) {
+                    isLoggedIn = true;
+                    navigate('home');
+                } else {
+                    // If not verified, show verification screen
+                    renderEmailVerificationScreen(email);
+                }
+            } else {
+                // Register new user
+                const userCred = await firebase.auth().createUserWithEmailAndPassword(email, password);
+                const user = userCred.user;
+                // Optionally set displayName
+                if (user && username) {
+                    await user.updateProfile({ displayName: username });
+                }
+                // Send verification email
+                await user.sendEmailVerification();
+                renderEmailVerificationScreen(email);
+            }
+        } catch (err) {
+            console.error(err);
+            msgEl.textContent = err.message || 'Error during auth';
+        }
     });
 
-    // Handle switching between Login and Register
+    // Toggle register/login
     document.getElementById('toggle-register').addEventListener('click', function() {
         const usernameInput = document.getElementById('auth-username');
         const submitButton = document.querySelector('#auth-form button[type="submit"]');
@@ -115,32 +138,60 @@ function renderAuthScreen() {
     });
 }
 
-
 function renderEmailVerificationScreen(email) {
     appContainer.innerHTML = `
         <div class="auth-container">
             <h2>Email Verification</h2>
             <p>A verification link has been sent to <strong>${email}</strong>.</p>
-            <p>Please click the link to verify your account.</p>
+            <p>Please click the link in your email to verify your account.</p>
             <button id="resend-email" class="btn secondary-btn">Resend Email</button>
-            <button id="fake-verify" class="btn primary-btn" style="margin-left: 10px;">I have verified (Faking)</button>
+            <button id="fake-verify" class="btn primary-btn" style="margin-left: 10px;">I have verified (Check)</button>
+            <p id="verify-msg" style="margin-top:12px;color:#333;"></p>
         </div>
     `;
-    
-    // Faking verification success to proceed to Home
-    document.getElementById('fake-verify').addEventListener('click', () => {
-        isLoggedIn = true;
-        navigate('home');
+
+    const user = firebase.auth().currentUser;
+    document.getElementById('resend-email').addEventListener('click', async () => {
+        const statusEl = document.getElementById('verify-msg');
+        statusEl.textContent = 'Sending verification email...';
+        try {
+            if (user) {
+                await user.sendEmailVerification();
+                statusEl.textContent = 'Verification email resent. Check your inbox.';
+            } else {
+                statusEl.textContent = 'No user session found. Try logging in again.';
+            }
+        } catch (err) {
+            statusEl.textContent = 'Error: ' + (err.message || err);
+        }
+    });
+
+    // Check if user has verified — attempt to reload user state
+    document.getElementById('fake-verify').addEventListener('click', async () => {
+        const statusEl = document.getElementById('verify-msg');
+        statusEl.textContent = 'Checking...';
+        try {
+            const current = firebase.auth().currentUser;
+            if (current) {
+                await current.reload();
+                if (current.emailVerified) {
+                    isLoggedIn = true;
+                    navigate('home');
+                } else {
+                    statusEl.textContent = 'Email not verified yet. Please check your email and click the verification link.';
+                }
+            } else {
+                statusEl.textContent = 'No user session. Please log in or register.';
+            }
+        } catch (err) {
+            statusEl.textContent = 'Error: ' + (err.message || err);
+        }
     });
 }
 
-
-// Renders the Home screen (Video List) - FIXED LISTING
 function renderHomeScreen() {
     const videoListHTML = FAKE_VIDEOS_DATA.map((video, index) => {
-        // 1. Create Telegram Download Link for Thumbnail (Placeholder used)
         const thumbnailUrl = getTelegramDownloadLink(video.thumbnailId); 
-        
         return `
             <div class="video-card" data-video-index="${index}" onclick="playVideo(${index})">
                 <img src="${thumbnailUrl}" alt="${video.title} Thumbnail" class="video-thumbnail">
@@ -162,15 +213,12 @@ function renderHomeScreen() {
     renderMainLayout(homeContent);
 }
 
-
 function renderHistoryScreen() {
     const history = JSON.parse(localStorage.getItem('userHistory') || '[]');
-    
     let historyList = '<p><h3>No history yet. Start watching!</h3></p>';
     if (history.length > 0) {
-        // Reverse history so latest video is at the top
-        historyList = '<ul class="history-list">' + history.reverse().map(item => 
-            `<li>**${item.title}** - Watched on <em>${item.watchedAt}</em></li>`
+        historyList = '<ul class="history-list">' + history.slice().reverse().map(item => 
+            `<li><strong>${item.title}</strong> - Watched on <em>${item.watchedAt}</em></li>`
         ).join('') + '</ul>';
     }
 
@@ -184,45 +232,45 @@ function renderHistoryScreen() {
     renderMainLayout(historyContent);
 }
 
-
 function renderProfileScreen() {
-    const user = FAKE_USER_DATA; // Replace with actual logged-in user data from server
+    const user = firebase.auth().currentUser;
+    const profileUser = user ? {
+        username: user.displayName || FAKE_USER_DATA.username,
+        name: user.displayName || FAKE_USER_DATA.name,
+        email: user.email || FAKE_USER_DATA.email,
+        joined: FAKE_USER_DATA.joined
+    } : FAKE_USER_DATA;
+
     const profileContent = `
         <div class="page-header">
             <h2>Profile - User Details</h2>
         </div>
         <table class="profile-table">
-            <tr><th>Username:</th><td>${user.username}</td></tr>
-            <tr><th>Name:</th><td>${user.name}</td></tr>
-            <tr><th>Email:</th><td>${user.email}</td></tr>
-            <tr><th>Member Since:</th><td>${user.joined}</td></tr>
+            <tr><th>Username:</th><td>${profileUser.username}</td></tr>
+            <tr><th>Name:</th><td>${profileUser.name}</td></tr>
+            <tr><th>Email:</th><td>${profileUser.email}</td></tr>
+            <tr><th>Member Since:</th><td>${profileUser.joined}</td></tr>
         </table>
     `;
     
     renderMainLayout(profileContent);
 }
 
+// ------------------ VIDEO PLAYBACK ------------------
 
-// --- 🎬 VIDEO PLAYBACK AND NAVIGATION ---
-
-// Function to handle video play
 window.playVideo = function(index) {
     const videoData = getVideoData(index);
     if (!videoData) return;
     
-    // 1. IMPORTANT: Get the actual video stream URL
     const videoUrl = getTelegramDownloadLink(videoData.videoId);
 
     if (!videoUrl) {
-         // Since we are using a placeholder, this alert will show. 
-         alert("Cannot play video: Telegram Video ID needs to be converted to a direct URL by your backend server.");
+         alert("Cannot play video: Telegram Video ID needs backend conversion to a direct URL.");
          return;
     }
     
-    // 2. Add to History
     addToHistory(videoData.title); 
 
-    // 3. Render the Video Player
     const playerDiv = document.getElementById('video-player');
     playerDiv.innerHTML = `
         <h3 class="player-title">Now Playing: ${videoData.title}</h3>
@@ -231,18 +279,17 @@ window.playVideo = function(index) {
             Your browser does not support the video tag.
         </video>
     `;
-    // Scroll to the player
     playerDiv.scrollIntoView({ behavior: 'smooth' });
 }
 
+// ------------------ NAVIGATION & AUTH ------------------
 
-// Main router/navigation function
 function navigate(screen) {
-    if (!isLoggedIn) {
-        if (screen !== 'auth') {
-             // If not logged in, force authentication screen
-             return renderAuthScreen(); 
-        }
+    // If user not logged-in or not verified, force auth screen
+    const current = firebase.auth().currentUser;
+    const isVerified = current && current.emailVerified;
+    if (!isVerified && screen !== 'auth') {
+         return renderAuthScreen();
     }
 
     switch (screen) {
@@ -262,15 +309,38 @@ function navigate(screen) {
     }
 }
 
-// Logout function
 window.logout = function() {
-    isLoggedIn = false; 
-    localStorage.removeItem('userHistory'); 
-    navigate('auth');
+    firebase.auth().signOut().then(() => {
+        isLoggedIn = false;
+        localStorage.removeItem('userHistory');
+        navigate('auth');
+    }).catch(err => {
+        console.error('Sign out error', err);
+        alert('Error signing out: ' + (err.message || err));
+    });
 }
 
-// --- 🚀 INITIALIZATION ---
+// ------------------ INITIALIZATION & AUTH STATE LISTENER ------------------
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Start with the authentication screen
-    navigate('auth'); 
+    // Listen for auth state changes to update UI automatically
+    firebase.auth().onAuthStateChanged(async (user) => {
+        if (user) {
+            // If user signed in but not verified, show verification screen
+            await user.reload();
+            if (user.emailVerified) {
+                isLoggedIn = true;
+                navigate('home');
+            } else {
+                isLoggedIn = false;
+                renderEmailVerificationScreen(user.email || '');
+            }
+        } else {
+            isLoggedIn = false;
+            navigate('auth');
+        }
+    });
+
+    // Kick off initial screen
+    navigate('auth');
 });
