@@ -1,50 +1,71 @@
-// --- 🎛️ Filter Logic ---
-window.generateFilters = function(videos) {
-    const contentSet = new Set();
-    const seasonSet = new Set();
-    const episodeSet = new Set();
+// --- 🎯 FILTER MODULE ---
+const filterModule = (() => {
+    let videos = [];
+    let callback = null;
 
-    videos.forEach(v => {
-        const [content, season, episode] = v.description.split('/');
-        contentSet.add(content);
-        seasonSet.add(season);
-        episodeSet.add(episode);
-    });
+    function initFilters(videoList, cb) {
+        videos = videoList;
+        callback = cb;
+        renderFilters();
+    }
 
-    const contentOptions = ['All', ...[...contentSet].sort()];
-    const seasonOptions = ['All', ...[...seasonSet].sort()];
-    const episodeOptions = ['All', ...[...episodeSet].sort()];
+    function renderFilters() {
+        const container = document.getElementById('filters-container');
+        container.innerHTML = '';
 
-    return { contentOptions, seasonOptions, episodeOptions };
-}
+        const contentSet = new Set();
+        const seasonSet = new Set();
+        const episodeSet = new Set();
 
-// Populate dropdowns
-window.renderFilterDropdowns = function(filters) {
-    return `
-        <div class="filter-container">
-            <select id="filter-content">
-                ${filters.contentOptions.map(c => `<option value="${c}">${c}</option>`).join('')}
-            </select>
-            <select id="filter-season">
-                ${filters.seasonOptions.map(s => `<option value="${s}">${s}</option>`).join('')}
-            </select>
-            <select id="filter-episode">
-                ${filters.episodeOptions.map(e => `<option value="${e}">${e}</option>`).join('')}
-            </select>
-        </div>
-    `;
-}
+        videos.forEach(v=>{
+            const [content, season, episode] = v.description.split('/');
+            contentSet.add(content);
+            seasonSet.add(season);
+            episodeSet.add(episode);
+        });
 
-// Filter videos based on selected dropdown
-window.applyFilters = function(videos) {
-    const contentVal = document.getElementById('filter-content').value;
-    const seasonVal = document.getElementById('filter-season').value;
-    const episodeVal = document.getElementById('filter-episode').value;
+        const createDropdown = (label, options) => {
+            const select = document.createElement('select');
+            select.classList.add('filter-dropdown');
+            const allOption = document.createElement('option');
+            allOption.value = 'All';
+            allOption.text = `All ${label}`;
+            select.appendChild(allOption);
+            options.forEach(opt=>{
+                const option = document.createElement('option');
+                option.value = opt;
+                option.text = opt;
+                select.appendChild(option);
+            });
+            return select;
+        }
 
-    return videos.filter(v => {
-        const [content, season, episode] = v.description.split('/');
-        return (contentVal === 'All' || content === contentVal) &&
-               (seasonVal === 'All' || season === seasonVal) &&
-               (episodeVal === 'All' || episode === episodeVal);
-    });
-}
+        const contentDropdown = createDropdown('Content', Array.from(contentSet));
+        const seasonDropdown = createDropdown('Season', Array.from(seasonSet));
+        const episodeDropdown = createDropdown('Episode', Array.from(episodeSet));
+
+        container.appendChild(contentDropdown);
+        container.appendChild(seasonDropdown);
+        container.appendChild(episodeDropdown);
+
+        [contentDropdown, seasonDropdown, episodeDropdown].forEach(drop=>{
+            drop.addEventListener('change', applyFilters);
+        });
+    }
+
+    function applyFilters() {
+        const selects = document.querySelectorAll('.filter-dropdown');
+        const [contentSel, seasonSel, episodeSel] = selects;
+
+        let filtered = videos.filter(v=>{
+            const [content, season, episode] = v.description.split('/');
+            return (contentSel.value==='All' || contentSel.value===content)
+                && (seasonSel.value==='All' || seasonSel.value===season)
+                && (episodeSel.value==='All' || episodeSel.value===episode);
+        });
+
+        if(callback) callback(filtered);
+    }
+
+    return { initFilters };
+})();
