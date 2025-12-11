@@ -1,42 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Video App</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Video App (Firebase + Telegram)</title>
 
-    <!-- Your CSS -->
-    <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css">
 
-    <!-- Firebase (compat libraries for simpler migration/usage) -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <!-- Firebase compat libs (simple integration) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
-    <!-- Place firebaseConfig and init before app.js so app.js can use firebase -->
-    <script>
-      // --- Your firebaseConfig (you provided this) ---
-      const firebaseConfig = {
-        apiKey: "AIzaSyCh3l_nm0h0rftal0-NZH0Nl5Vuf0MU_gM",
-        authDomain: "noteapp-1ad69.firebaseapp.com",
-        databaseURL: "https://noteapp-1ad69-default-rtdb.firebaseio.com",
-        projectId: "noteapp-1ad69",
-        storageBucket: "noteapp-1ad69.appspot.com",
-        messagingSenderId: "33056669455",
-        appId: "1:33056669455:web:21b7f7f58847112b9a487a",
-        measurementId: "G-RXS945QBFY"
-      };
+  <script>
+    // ---- YOUR FIREBASE CONFIG (you provided earlier) ----
+    const firebaseConfig = {
+      apiKey: "AIzaSyCh3l_nm0h0rftal0-NZH0Nl5Vuf0MU_gM",
+      authDomain: "noteapp-1ad69.firebaseapp.com",
+      databaseURL: "https://noteapp-1ad69-default-rtdb.firebaseio.com",
+      projectId: "noteapp-1ad69",
+      storageBucket: "noteapp-1ad69.appspot.com",
+      messagingSenderId: "33056669455",
+      appId: "1:33056669455:web:21b7f7f58847112b9a487a",
+      measurementId: "G-RXS945QBFY"
+    };
 
-      // Initialize Firebase
-      firebase.initializeApp(firebaseConfig);
-    </script>
+    // Initialize Firebase (compat)
+    firebase.initializeApp(firebaseConfig);
+  </script>
 </head>
 <body>
-    <div id="app-container">
-        Loading application...
-    </div>
+  <div id="app-container">Loading application...</div>
 
-    <!-- Your app code (uses firebase) -->
-    <script src="app.js"></script>
+  <!-- Main app script -->
+  <script src="app.js"></script>
 </body>
 </html>
