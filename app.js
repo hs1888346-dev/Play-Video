@@ -1,4 +1,4 @@
-// Firebase
+// --- Firebase Initialization ---
 const firebaseConfig = {
   apiKey: "AIzaSyCh3l_nm0h0rftal0-NZH0Nl5Vuf0MU_gM",
   authDomain: "noteapp-1ad69.firebaseapp.com",
@@ -13,190 +13,157 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 let isLoggedIn = false;
-let FAKE_VIDEOS_DATA = [];
-let BOT_TOKEN = "";
+let botToken = null;
 
-// --- Authentication ---
+const appContainer = document.getElementById('app-container');
+
+// --- Auth Screen ---
 function renderAuthScreen() {
-    const appContainer = document.getElementById('app-container');
     appContainer.innerHTML = `
         <div class="auth-container">
             <h2>Login</h2>
-            <form id="auth-form" class="form-card">
-                <input type="email" id="auth-email" placeholder="Email" required class="input-field"><br>
-                <input type="password" id="auth-password" placeholder="Password" required class="input-field"><br>
-                <button type="submit" class="btn primary-btn">Login</button>
-            </form>
-            <p id="auth-message" class="error-message"></p>
+            <input type="email" id="auth-email" placeholder="Email" class="input-field">
+            <input type="password" id="auth-password" placeholder="Password" class="input-field">
+            <button id="auth-login" class="btn primary-btn">Login</button>
         </div>
     `;
+    document.getElementById('auth-login').addEventListener('click', loginUser);
+}
 
-    document.getElementById('auth-form').addEventListener('submit', async e => {
-        e.preventDefault();
-        const email = document.getElementById('auth-email').value;
-        const password = document.getElementById('auth-password').value;
-        try {
-            const userCredential = await firebase.auth().signInWithEmailAndPassword(email, password);
-            if (!userCredential.user.emailVerified) {
-                renderEmailVerificationScreen(email);
-                return;
-            }
+// --- Firebase Email Login ---
+function loginUser() {
+    const email = document.getElementById('auth-email').value;
+    const pass = document.getElementById('auth-password').value;
+
+    firebase.auth().signInWithEmailAndPassword(email, pass)
+    .then(userCred => {
+        if(userCred.user.emailVerified){
             isLoggedIn = true;
             navigate('home');
-        } catch(err) {
-            document.getElementById('auth-message').innerText = err.message;
+        } else {
+            alert("Please verify your email first!");
+            userCred.user.sendEmailVerification()
+            .then(()=> alert("Verification email sent!"))
+            .catch(err=> alert(err.message));
         }
+    })
+    .catch(err=> alert(err.message));
+}
+
+// --- Telegram URL ---
+function getTelegramFileURL(filePath){
+    if(!filePath || !botToken) return null;
+    return `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+}
+
+// --- Fetch videos ---
+function fetchVideos(callback){
+    // Get bot token first
+    db.ref('TelegramBot').once('value').then(snap=>{
+        botToken = Object.values(snap.val())[0];
+        db.ref('videos').once('value').then(snap=>{
+            const videos = [];
+            snap.forEach(child=>{
+                const val = child.val();
+                videos.push({
+                    videoId: val.videoId,
+                    thumbnailId: val.thumbnailId,
+                    title: val.title,
+                    description: val.description
+                });
+            });
+            callback(videos);
+        });
     });
 }
 
-function renderEmailVerificationScreen(email) {
-    const appContainer = document.getElementById('app-container');
-    appContainer.innerHTML = `
-        <div class="auth-container">
-            <h2>Email Verification</h2>
-            <p>Please verify your email: <strong>${email}</strong></p>
-            <button id="resend-email" class="btn secondary-btn">Resend Email</button>
-            <button id="fake-verify" class="btn primary-btn">I have verified</button>
-        </div>
-    `;
-    document.getElementById('resend-email').addEventListener('click', async () => {
-        const user = firebase.auth().currentUser;
-        await user.sendEmailVerification();
-        alert("Verification email sent!");
-    });
-    document.getElementById('fake-verify').addEventListener('click', () => {
-        navigate('home');
-    });
-}
-
-// --- Telegram Video URL ---
-function getTelegramStreamLink(fileId) {
-    return `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileId}`;
-}
-
-// --- Video Rendering ---
+// --- Render Home ---
 function renderHomeScreen() {
-    const appContainer = document.getElementById('app-container');
+    fetchVideos(videos=>{
+        // Sort by description
+        videos.sort((a,b)=>{
+            const [c1,s1,e1] = a.description.split('/');
+            const [c2,s2,e2] = b.description.split('/');
+            if(c1!==c2) return c1.localeCompare(c2);
+            if(s1!==s2) return s1.localeCompare(s2);
+            return e1.localeCompare(e2);
+        });
 
-    // Generate filters
-    const filters = generateFilters(FAKE_VIDEOS_DATA);
-    const filterHTML = renderFilterDropdowns(filters);
+        const videoGrid = videos.map((v,i)=>{
+            const thumb = getTelegramFileURL(v.thumbnailId);
+            return `
+                <div class="video-card" data-index="${i}">
+                    <img src="${thumb}" class="video-thumbnail">
+                    <div class="video-title">${v.title}</div>
+                    <div class="video-meta">${v.description.split('/').join(' | ')}</div>
+                </div>
+            `;
+        }).join('');
 
-    // Render videos sorted
-    const videosSorted = [...FAKE_VIDEOS_DATA].sort((a,b)=>{
-        const [c1,s1,e1] = a.description.split('/');
-        const [c2,s2,e2] = b.description.split('/');
-        if(c1!==c2) return c1.localeCompare(c2);
-        if(s1!==s2) return s1.localeCompare(s2);
-        return e1.localeCompare(e2);
+        appContainer.innerHTML = `
+            <div id="video-grid" class="grid-layout">${videoGrid}</div>
+        `;
+
+        // Init filters
+        filterModule.initFilters(videos, (filtered)=>{
+            renderFilteredVideos(filtered);
+        });
+
+        // Video click event
+        document.querySelectorAll('.video-card').forEach(card=>{
+            card.addEventListener('click', ()=>{
+                const idx = card.dataset.index;
+                playVideo(videos[idx]);
+            });
+        });
     });
-
-    const videoListHTML = videosSorted.map((v, idx)=>{
-        const thumbUrl = getTelegramStreamLink(v.thumbnailId);
-        return `
-            <div class="video-card" onclick="playVideo(${idx})">
-                <img src="${thumbUrl}" alt="${v.title}" class="video-thumbnail">
-                <div class="video-title">${v.title}</div>
-                <div style="font-size:0.85em;color:#555;">${v.description.split('/').join('<br>')}</div>
-            </div>
-        `;
-    }).join('');
-
-    appContainer.innerHTML = `
-        <header>
-            <h1>Video App</h1>
-            <nav>
-                <button onclick="navigate('home')" class="btn secondary-btn">🏠 Home</button>
-                <button onclick="navigate('history')" class="btn secondary-btn">📜 History</button>
-                <button onclick="navigate('profile')" class="btn secondary-btn">👤 Profile</button>
-                <button onclick="logout()" class="btn primary-btn">👋 Logout</button>
-            </nav>
-        </header>
-        ${filterHTML}
-        <div id="video-grid" class="grid-layout">
-            ${videoListHTML}
-        </div>
-
-        <div class="video-dialog" id="video-dialog">
-            <div class="video-dialog-content">
-                <span class="video-dialog-close" onclick="closeVideo()">×</span>
-                <video controls id="video-player"></video>
-            </div>
-        </div>
-    `;
-
-    // Filter change
-    document.getElementById('filter-content').addEventListener('change',()=>applyFilterRender(videosSorted));
-    document.getElementById('filter-season').addEventListener('change',()=>applyFilterRender(videosSorted));
-    document.getElementById('filter-episode').addEventListener('change',()=>applyFilterRender(videosSorted));
 }
 
-function applyFilterRender(videosSorted){
-    const filtered = applyFilters(videosSorted);
+// --- Filtered render ---
+function renderFilteredVideos(filtered){
     const grid = document.getElementById('video-grid');
-    grid.innerHTML = filtered.map((v,idx)=>{
-        const thumbUrl = getTelegramStreamLink(v.thumbnailId);
+    grid.innerHTML = filtered.map((v,i)=>{
+        const thumb = getTelegramFileURL(v.thumbnailId);
         return `
-            <div class="video-card" onclick="playVideo(${idx})">
-                <img src="${thumbUrl}" alt="${v.title}" class="video-thumbnail">
+            <div class="video-card" data-index="${i}">
+                <img src="${thumb}" class="video-thumbnail">
                 <div class="video-title">${v.title}</div>
-                <div style="font-size:0.85em;color:#555;">${v.description.split('/').join('<br>')}</div>
+                <div class="video-meta">${v.description.split('/').join(' | ')}</div>
             </div>
         `;
     }).join('');
+
+    // Re-attach click events
+    document.querySelectorAll('.video-card').forEach((card,i)=>{
+        card.addEventListener('click', ()=> playVideo(filtered[i]));
+    });
 }
 
-// Play video in dialog
-window.playVideo = function(index){
-    const video = FAKE_VIDEOS_DATA[index];
-    const videoDialog = document.getElementById('video-dialog');
-    const player = document.getElementById('video-player');
-    player.src = getTelegramStreamLink(video.videoId);
-    videoDialog.style.display = 'flex';
-    player.play();
-}
+// --- Video Play Dialog ---
+function playVideo(video){
+    const dialog = document.getElementById('video-dialog');
+    const title = document.getElementById('player-title');
+    const player = document.getElementById('player-video');
 
-window.closeVideo = function(){
-    const videoDialog = document.getElementById('video-dialog');
-    const player = document.getElementById('video-player');
-    player.pause();
-    player.src = '';
-    videoDialog.style.display = 'none';
+    title.textContent = video.title;
+    player.src = getTelegramFileURL(video.videoId);
+
+    dialog.classList.remove('hidden');
+
+    document.getElementById('close-dialog').onclick = ()=>{
+        dialog.classList.add('hidden');
+        player.pause();
+        player.src = '';
+    };
 }
 
 // --- Navigation ---
 function navigate(screen){
-    if(!isLoggedIn && screen!=='auth'){ renderAuthScreen(); return; }
-
-    switch(screen){
-        case 'home': renderHomeScreen(); break;
-        case 'history': renderHistoryScreen(); break;
-        case 'profile': renderProfileScreen(); break;
-        case 'auth': renderAuthScreen(); break;
-    }
+    if(!isLoggedIn) return renderAuthScreen();
+    if(screen==='home') renderHomeScreen();
 }
 
-// --- Logout ---
-window.logout = function(){
-    isLoggedIn = false;
-    navigate('auth');
-}
-
-// --- Fetch Bot Token & Videos ---
-async function fetchBotTokenAndVideos(){
-    const tokenSnap = await db.ref('TelegramBot').once('value');
-    BOT_TOKEN = Object.values(tokenSnap.val())[0]; 
-
-    const videosSnap = await db.ref('videos').once('value');
-    FAKE_VIDEOS_DATA = Object.values(videosSnap.val());
-}
-
-// --- Initialization ---
-document.addEventListener('DOMContentLoaded', async ()=>{
-    await fetchBotTokenAndVideos();
-    navigate('auth');
+// --- Init ---
+document.addEventListener('DOMContentLoaded', ()=>{
+    navigate('home');
 });
-
-// --- Profile & History placeholders ---
-function renderHistoryScreen(){ alert("History not implemented yet"); }
-function renderProfileScreen(){ alert("Profile not implemented yet"); }
