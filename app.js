@@ -1,10 +1,6 @@
 /*********************************************************
- * app.js - Updated
- * - Uses filter.js (window.filterModule)
- * - Bottom-sheet dialog player (lazy video URL fetch)
- * - Thumbnails loaded on list; video URLs fetched on play
+ * app.js - Finalized
  *********************************************************/
-
 const auth = firebase.auth();
 const db = firebase.database();
 
@@ -16,10 +12,13 @@ const bsMeta = document.getElementById('bs-meta');
 const bsPlayerWrap = document.getElementById('bs-player-wrap');
 const bsClose = document.getElementById('bs-close');
 
-let loadedVideos = []; // { id, title, description, thumbnailId, videoId, thumbnailUrl, videoUrl?, meta }
-const telegramUrlCache = {}; // cache fileId -> fileUrl or null
+let loadedVideos = []; // { id, title, description, thumbnailId, videoId, thumbnailUrl, videoUrl, meta }
+const telegramUrlCache = {}; // cache file_path -> final url
 
-/* ---------- Telegram token helper (reads once per call) ---------- */
+/* ---------- Helpers ---------- */
+function escapeHtml(s) { return (s||'').toString().replace(/[&<>"']/g, function(m){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]);}); }
+
+/* ---------- Read bot token once (from TelegramBot/token) ---------- */
 function getBotTokenOnce() {
   return new Promise((resolve, reject) => {
     db.ref('TelegramBot/token').once('value', snap => {
@@ -28,39 +27,56 @@ function getBotTokenOnce() {
   });
 }
 
-/* ---------- Convert Telegram file_id -> direct URL (with cache) ---------- */
-async function getTelegramFileURL(fileId) {
-  if (!fileId) return null;
-  if (telegramUrlCache[fileId] !== undefined) return telegramUrlCache[fileId];
+/* ---------- Build Telegram direct file URL (cache) ----------
+   We assume DB stores file_path like "photos/file_123.jpg" or "videos/file_123.mp4"
+   If token missing return null.
+*/
+async function getTelegramFileURL(filePathOrId) {
+  if (!filePathOrId) return null;
+  if (telegramUrlCache[filePathOrId] !== undefined) return telegramUrlCache[filePathOrId];
+
+  // If already a full URL, return
+  if (filePathOrId.startsWith('http://') || filePathOrId.startsWith('https://')) {
+    telegramUrlCache[filePathOrId] = filePathOrId;
+    return filePathOrId;
+  }
 
   try {
     const token = await getBotTokenOnce();
     if (!token) {
       console.error('Bot token missing at TelegramBot/token');
-      telegramUrlCache[fileId] = null;
+      telegramUrlCache[filePathOrId] = null;
       return null;
     }
-    const apiUrl = `https://api.telegram.org/bot${encodeURIComponent(token)}/getFile?file_id=${encodeURIComponent(fileId)}`;
 
+    // If supplied value already looks like a file_path (contains '/'), use directly
+    if (filePathOrId.includes('/')) {
+      const final = `https://api.telegram.org/file/bot${encodeURIComponent(token)}/${filePathOrId}`;
+      telegramUrlCache[filePathOrId] = final;
+      return final;
+    }
+
+    // Otherwise, attempt to call getFile to resolve file_path (fallback)
+    const apiUrl = `https://api.telegram.org/bot${encodeURIComponent(token)}/getFile?file_id=${encodeURIComponent(filePathOrId)}`;
     const resp = await fetch(apiUrl);
     const json = await resp.json();
     if (!json || !json.ok || !json.result || !json.result.file_path) {
       console.error('Telegram getFile failed', json);
-      telegramUrlCache[fileId] = null;
+      telegramUrlCache[filePathOrId] = null;
       return null;
     }
     const filePath = json.result.file_path;
-    const finalUrl = `https://api.telegram.org/file/bot${encodeURIComponent(token)}/${filePath}`;
-    telegramUrlCache[fileId] = finalUrl;
-    return finalUrl;
+    const final = `https://api.telegram.org/file/bot${encodeURIComponent(token)}/${filePath}`;
+    telegramUrlCache[filePathOrId] = final;
+    return final;
   } catch (err) {
     console.error('getTelegramFileURL error', err);
-    telegramUrlCache[fileId] = null;
+    telegramUrlCache[filePathOrId] = null;
     return null;
   }
 }
 
-/* ---------- UI Rendering helpers ---------- */
+/* ---------- UI layout ---------- */
 function renderMainLayout(contentHTML) {
   appContainer.innerHTML = `
     <header>
@@ -72,19 +88,23 @@ function renderMainLayout(contentHTML) {
         <button onclick="logout()" class="btn primary-btn">👋 Logout</button>
       </nav>
     </header>
+
+    <!-- Filters container will be populated by filter.js -->
+    <div id="filters-container" class="filters-row"></div>
+
     <main id="main-content">${contentHTML}</main>
   `;
 }
 
-/* ---------- Auth UI (login/register/verify) ---------- */
+/* ---------- Auth screens ---------- */
 function renderAuthScreen() {
   const current = auth.currentUser;
-  if (current && current.emailVerified) {
-    navigate('home');
-    return;
-  }
+  if (current && current.emailVerified) { navigate('home'); return; }
 
   appContainer.innerHTML = `
+    <header>
+      <h1>Video App</h1>
+    </header>
     <div class="auth-container">
       <h2>Login / Register</h2>
       <form id="auth-form" class="form-card">
@@ -115,7 +135,7 @@ function renderAuthScreen() {
           showVerificationPopup(user);
           return;
         }
-        navigate('home');
+        loadVideosFromDb();
       } else {
         const cred = await auth.createUserWithEmailAndPassword(email, password);
         const user = cred.user;
@@ -148,9 +168,10 @@ function renderAuthScreen() {
 
 function renderEmailVerificationScreen(email) {
   appContainer.innerHTML = `
+    <header><h1>Video App</h1></header>
     <div class="auth-container">
       <h2>Email Verification</h2>
-      <p>A verification link has been sent to <strong>${email}</strong>.</p>
+      <p>A verification link has been sent to <strong>${escapeHtml(email)}</strong>.</p>
       <p>Please click the link in your email to verify your account.</p>
       <button id="resend-email" class="btn secondary-btn">Resend Email</button>
       <button id="check-verified" class="btn primary-btn" style="margin-left:10px;">I have verified (Check)</button>
@@ -166,7 +187,7 @@ function renderEmailVerificationScreen(email) {
       if (cur) {
         await cur.sendEmailVerification();
         statusEl.textContent = 'Verification email resent.';
-      } else statusEl.textContent = 'No user session.';
+      } else statusEl.textContent = 'No active session.';
     } catch (err) {
       statusEl.textContent = 'Error: ' + (err.message || err);
     }
@@ -181,9 +202,7 @@ function renderEmailVerificationScreen(email) {
         await cur.reload();
         if (cur.emailVerified) {
           loadVideosFromDb();
-        } else {
-          statusEl.textContent = 'Email not verified yet.';
-        }
+        } else statusEl.textContent = 'Email not verified yet.';
       } else statusEl.textContent = 'No user session.';
     } catch (err) {
       statusEl.textContent = 'Error: ' + (err.message || err);
@@ -235,13 +254,12 @@ function showVerificationPopup(user) {
   document.getElementById('popup-close').addEventListener('click', () => popup.remove());
 }
 
-/* ---------- Home / video rendering ---------- */
+/* ---------- Home / Video rendering ---------- */
 function renderHomeScreen(filteredVideos) {
-  // ensure filters container exists (filterModule will insert it)
   const videosToShow = filteredVideos || loadedVideos;
-  const listHTML = videosToShow.map((v, idx) => `
-    <div class="video-card" data-video-index="${idx}" onclick="onVideoCardClick('${v.id}')">
-      <img src="${v.thumbnailUrl || 'https://via.placeholder.com/250x150?text=No+Thumbnail'}" alt="${escapeHtml(v.title)}" class="video-thumbnail">
+  const listHTML = videosToShow.map((v) => `
+    <div class="video-card" data-video-id="${escapeHtml(v.id)}" onclick="onVideoCardClick('${escapeHtml(v.id)}')">
+      <img src="${escapeHtml(v.thumbnailUrl || 'https://via.placeholder.com/250x150?text=No+Thumbnail')}" alt="${escapeHtml(v.title)}" class="video-thumbnail">
       <div class="video-title">${escapeHtml(v.title)}</div>
       <div style="padding:8px;color:#666;font-size:.9rem;">
         ${escapeHtml(v.meta && v.meta.content ? v.meta.content : (v.title || ''))}<br>
@@ -258,18 +276,12 @@ function renderHomeScreen(filteredVideos) {
   renderMainLayout(homeContent);
 }
 
-function escapeHtml(s) {
-  return (s||'').toString().replace(/[&<>"']/g, function(m){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]);});
-}
-
-/* ---------- handle clicking on a card (get index by id) ---------- */
+/* ---------- Click handlers and bottom sheet ---------- */
 window.onVideoCardClick = async function(id) {
   const vid = loadedVideos.find(v => v.id === id);
   if (!vid) return;
 
-  // lazy fetch video URL if not available
   if (!vid.videoUrl && vid.videoId) {
-    // show loader in bottom sheet
     openBottomSheetLoading(vid);
     const url = await getTelegramFileURL(vid.videoId);
     vid.videoUrl = url;
@@ -295,28 +307,24 @@ function showBottomSheetError(msg) {
 }
 
 function openBottomSheet(vid) {
-  // fill meta and title
   bsTitle.textContent = vid.title;
-  // parse meta content/season/episode into readable line
   const metaParts = [];
-  if (vid.meta && vid.meta.content) metaParts.push(escapeHtml(vid.meta.content));
-  if (vid.meta && vid.meta.season) metaParts.push(escapeHtml(vid.meta.season));
-  if (vid.meta && vid.meta.episode) metaParts.push(escapeHtml(vid.meta.episode));
-  bsMeta.innerHTML = metaParts.map(p => `<div>${p}</div>`).join('');
+  if (vid.meta && vid.meta.content) metaParts.push(vid.meta.content);
+  if (vid.meta && vid.meta.season) metaParts.push(vid.meta.season);
+  if (vid.meta && vid.meta.episode) metaParts.push(vid.meta.episode);
+  bsMeta.innerHTML = metaParts.map(p => `<div>${escapeHtml(p)}</div>`).join('');
 
-  // create video element with smoother attributes
+  // create video element
   const videoEl = document.createElement('video');
   videoEl.controls = true;
   videoEl.autoplay = true;
   videoEl.playsInline = true;
-  videoEl.preload = 'metadata'; // let browser manage buffer but load metadata quickly
+  videoEl.preload = 'metadata';
   videoEl.className = 'video-element';
   videoEl.style.width = '100%';
   videoEl.setAttribute('controlslist', 'nodownload');
-  // crossOrigin may help depending on server
   videoEl.setAttribute('crossorigin', 'anonymous');
 
-  // source
   const src = document.createElement('source');
   src.src = vid.videoUrl;
   src.type = 'video/mp4';
@@ -325,35 +333,34 @@ function openBottomSheet(vid) {
   bsPlayerWrap.innerHTML = '';
   bsPlayerWrap.appendChild(videoEl);
 
-  // show
   openBackdrop();
 
-  // small buffering UX improvements
+  // buffering UX
   const loader = document.createElement('div');
   loader.className = 'loader-inline';
   loader.style.marginLeft = '8px';
 
   let stalledTimeout = null;
-  function showStalled() {
-    bsMeta.appendChild(loader);
-  }
-  function hideStalled() {
-    if (loader.parentNode) loader.parentNode.removeChild(loader);
-  }
+  function showStalled() { if (!bsMeta.querySelector('.loader-inline')) bsMeta.appendChild(loader); }
+  function hideStalled() { if (loader.parentNode) loader.parentNode.removeChild(loader); }
 
-  videoEl.addEventListener('stalled', () => {
-    // show small loader after 500ms to avoid flicker
-    stalledTimeout = setTimeout(showStalled, 500);
-  });
+  videoEl.addEventListener('stalled', () => { stalledTimeout = setTimeout(showStalled, 500); });
   videoEl.addEventListener('playing', () => { clearTimeout(stalledTimeout); hideStalled(); });
   videoEl.addEventListener('waiting', () => { stalledTimeout = setTimeout(showStalled, 500); });
   videoEl.addEventListener('canplay', () => { clearTimeout(stalledTimeout); hideStalled(); });
 
-  // Add to history
+  // history
   addToHistory(vid.title);
+
+  // try to play (some browsers require gesture)
+  const playPromise = videoEl.play();
+  if (playPromise && playPromise.catch) {
+    playPromise.catch(err => {
+      console.warn('Autoplay prevented:', err);
+    });
+  }
 }
 
-/* open/close backdrop */
 function openBackdrop() {
   bsBackdrop.style.display = 'flex';
   setTimeout(()=> bsSheet.classList.add('open'), 10);
@@ -363,17 +370,14 @@ function closeBackdrop() {
   bsSheet.classList.remove('open');
   bsBackdrop.setAttribute('aria-hidden','true');
   setTimeout(()=> bsBackdrop.style.display = 'none', 300);
-  // stop any playing video
   const v = bsPlayerWrap.querySelector('video');
   if (v) {
     v.pause();
-    // remove source to free memory
     v.querySelectorAll('source').forEach(s => s.src = '');
     bsPlayerWrap.innerHTML = '';
   }
 }
 
-/* close handlers */
 bsClose.addEventListener('click', closeBackdrop);
 bsBackdrop.addEventListener('click', (e) => {
   if (e.target === bsBackdrop) closeBackdrop();
@@ -413,26 +417,23 @@ function renderProfileScreen() {
   renderMainLayout(profileContent);
 }
 
-/* ---------- play / history ---------- */
+/* ---------- history util ---------- */
 function addToHistory(title) {
   let history = JSON.parse(localStorage.getItem('userHistory') || '[]');
   history.push({ title, watchedAt: new Date().toLocaleString() });
   localStorage.setItem('userHistory', JSON.stringify(history));
 }
 
-/* ---------- Load videos from Firebase (thumbnails only) ---------- */
+/* ---------- Load videos from Firebase (thumbnails) ---------- */
 async function loadVideosFromDb() {
-  // quick loading UI
   appContainer.innerHTML = `<div style="padding:30px">Loading videos...</div>`;
 
   const videosRef = db.ref('videos');
   videosRef.on('value', async (snap) => {
     const obj = snap.val() || {};
-    const keys = Object.keys(obj);
+    const keys = Object.keys(obj || {});
     loadedVideos = [];
 
-    // populate local array with basic fields and thumbnail (lazy videoUrl)
-    // We fetch thumbnail URLs in parallel for snappy UI
     const thumbPromises = keys.map(async (id) => {
       const v = obj[id];
       const title = v.title || 'Untitled';
@@ -440,34 +441,28 @@ async function loadVideosFromDb() {
       const thumbId = v.thumbnailId || '';
       const videoId = v.videoId || '';
 
-      // fetch thumbnail URL (may return null)
       const thumbUrl = thumbId ? await getTelegramFileURL(thumbId) : null;
 
-      const entry = {
+      return {
         id,
         title,
         description,
         thumbnailId: thumbId,
         videoId: videoId,
         thumbnailUrl: thumbUrl,
-        videoUrl: null, // lazy fetch on play
+        videoUrl: null,
         meta: null
       };
-
-      // meta will be parsed by filter module on init
-      return entry;
     });
 
-    // wait for all thumbnails
     const results = await Promise.all(thumbPromises);
     loadedVideos = results;
 
-    // initialize filters (filter.js)
+    // initialize filters
     if (window.filterModule) {
       filterModule.initFilters(loadedVideos, onFilterChange);
     }
 
-    // initial render -> show all
     renderHomeScreen();
   }, (err) => {
     appContainer.innerHTML = `<div style="padding:30px">Error loading videos: ${escapeHtml(err.message || err)}</div>`;
@@ -524,7 +519,7 @@ auth.onAuthStateChanged(async (user) => {
   }
 });
 
-/* ---------- Document ready ---------- */
+/* ---------- init ---------- */
 document.addEventListener('DOMContentLoaded', () => {
   navigate('auth');
 });
