@@ -7,7 +7,37 @@
 
   <link rel="stylesheet" href="style.css">
 
-  <!-- Firebase compat libs (simple integration) -->
+  <!-- small bottom-sheet styles (kept here for quick paste) -->
+  <style>
+    /* Bottom sheet / player dialog */
+    .bs-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none;
+      z-index: 1200; align-items: flex-end; justify-content: center;
+    }
+    .bs-sheet {
+      width: 100%; max-width: 1000px; border-top-left-radius: 16px; border-top-right-radius: 16px;
+      background: #fff; box-shadow: 0 -12px 30px rgba(0,0,0,.25);
+      transform: translateY(100%); transition: transform 280ms ease;
+      padding: 12px 16px 24px;
+    }
+    .bs-sheet.open { transform: translateY(0); }
+    .bs-handle { width: 48px; height: 6px; background:#ddd; border-radius: 4px; margin:6px auto; }
+    .bs-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .bs-title { font-weight:700; font-size:1.05rem; }
+    .bs-close { background:#f0f0f0; border:none; padding:8px 10px; border-radius:8px; cursor:pointer; }
+    .bs-meta { margin-top:8px; color:#555; font-size:.95rem; display:flex; gap:8px; flex-wrap:wrap;}
+    .loader-inline { display:inline-block; width:14px; height:14px; border-radius:50%; background:#bbb; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%{opacity:1}50%{opacity:.35}100%{opacity:1} }
+
+    /* Filters row */
+    .filters-row { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+    .filters-row select { padding:10px;border-radius:8px;border:1px solid #ddd; background:#fff; min-width:160px; }
+    @media (max-width:640px) {
+      .bs-sheet { padding-left:12px; padding-right:12px; }
+    }
+  </style>
+
+  <!-- Firebase compat libs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
@@ -24,15 +54,34 @@
       appId: "1:33056669455:web:21b7f7f58847112b9a487a",
       measurementId: "G-RXS945QBFY"
     };
-
-    // Initialize Firebase (compat)
     firebase.initializeApp(firebaseConfig);
   </script>
 </head>
 <body>
   <div id="app-container">Loading application...</div>
 
-  <!-- Main app script -->
+  <!-- Bottom-sheet dialog HTML (hidden, controlled by JS) -->
+  <div id="bs-backdrop" class="bs-backdrop" aria-hidden="true">
+    <div id="bs-sheet" class="bs-sheet" role="dialog" aria-modal="true">
+      <div class="bs-handle" aria-hidden="true"></div>
+      <div class="bs-header">
+        <div>
+          <div class="bs-title" id="bs-title">Title</div>
+          <div class="bs-meta" id="bs-meta"></div>
+        </div>
+        <div>
+          <button id="bs-close" class="bs-close">Close</button>
+        </div>
+      </div>
+      <div id="bs-player-wrap" style="margin-top:12px;">
+        <!-- video element injected here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter helper (split file) -->
+  <script src="filter.js"></script>
+  <!-- Main app -->
   <script src="app.js"></script>
 </body>
 </html>
