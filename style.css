@@ -1,3 +1,4 @@
+/* base */
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
@@ -22,7 +23,7 @@ header {
     align-items: center;
     border-bottom: 2px solid #e0e0e0;
     padding-bottom: 15px;
-    margin-bottom: 30px;
+    margin-bottom: 12px;
 }
 
 header h1 {
@@ -95,10 +96,26 @@ nav .btn {
     font-weight: 500;
 }
 
+/* Filters row (placed under header) */
+.filters-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin: 14px 0;
+    flex-wrap: wrap;
+}
+.filters-row select,
+.filters-row input[type="text"] {
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    background: #fff;
+    min-width: 160px;
+}
+
 /* Video Grid Layout */
 .grid-layout {
     display: grid;
-    /* Shows 3 columns on wide screens, 2 on medium, 1 on small */
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 25px;
 }
@@ -119,8 +136,8 @@ nav .btn {
 
 .video-thumbnail {
     width: 100%;
-    height: 160px; /* Fixed height for consistent look */
-    object-fit: cover; /* Ensures image covers the area */
+    height: 160px;
+    object-fit: cover;
     display: block;
 }
 
@@ -133,7 +150,7 @@ nav .btn {
     text-overflow: ellipsis;
 }
 
-/* Video Player */
+/* Video Player area (in-page fallback) */
 .video-player-container {
     margin-top: 40px;
     padding: 20px 0;
@@ -170,4 +187,39 @@ nav .btn {
     background-color: #f8f8f8;
     width: 30%;
     font-weight: 600;
+}
+
+/* Bottom sheet / player dialog */
+.bs-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: none;
+  z-index: 1200;
+  align-items: flex-end;
+  justify-content: center;
+}
+.bs-sheet {
+  width: 100%;
+  max-width: 1000px;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  background: #fff;
+  box-shadow: 0 -12px 30px rgba(0,0,0,.25);
+  transform: translateY(100%);
+  transition: transform 280ms ease;
+  padding: 12px 16px 24px;
+}
+.bs-sheet.open { transform: translateY(0); }
+.bs-handle { width: 48px; height: 6px; background:#ddd; border-radius: 4px; margin:6px auto; }
+.bs-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.bs-title { font-weight:700; font-size:1.05rem; }
+.bs-close { background:#f0f0f0; border:none; padding:8px 10px; border-radius:8px; cursor:pointer; }
+.bs-meta { margin-top:8px; color:#555; font-size:.95rem; display:flex; gap:8px; flex-wrap:wrap; }
+.loader-inline { display:inline-block; width:14px; height:14px; border-radius:50%; background:#bbb; animation: pulse 1s infinite; }
+@keyframes pulse { 0%{opacity:1}50%{opacity:.35}100%{opacity:1} }
+
+@media (max-width:640px) {
+  .bs-sheet { padding-left:12px; padding-right:12px; }
+  .filters-row select { min-width: 120px; }
 }
