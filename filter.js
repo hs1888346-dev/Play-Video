@@ -2,15 +2,13 @@
    Exposes simple filter utilities on window:
    - initFilters(videos, onChangeCallback)
    - updateFiltersFromVideos(videos)
-   - applyFilters(videos)
+   - applyFilters(filters)
 */
 (function(){
-  // internal state
   let _videos = [];
   let _cb = null;
 
   function parseFields(video) {
-    // ensure video has content/season/episode extracted
     const obj = { content: null, season: null, episode: null };
     if (!video) return obj;
 
@@ -20,11 +18,11 @@
       obj.episode = video.meta.episode || null;
       return obj;
     }
-    // try description variations
+
     const desc = video.description || '';
     if (typeof desc === 'string') {
-      // split by newline or '|' or '::' or ' - '
-      const parts = desc.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+      // split by newline or by / or by | or by - or by :
+      let parts = desc.split(/\r?\n|\/|\||\-|:/).map(s=>s.trim()).filter(Boolean);
       if (parts.length >= 1) obj.content = parts[0];
       if (parts.length >= 2) obj.season = parts[1];
       if (parts.length >= 3) obj.episode = parts[2];
@@ -56,7 +54,6 @@
       episodesByContentSeason[content][season] = episodesByContentSeason[content][season] || new Set();
       episodesByContentSeason[content][season].add(episode);
 
-      // attach parsed meta for reuse
       v.meta = { content, season, episode };
     });
 
@@ -70,20 +67,16 @@
   }
 
   function renderFilterControls(lists) {
-    // ensure container exists
     let container = document.getElementById('filters-container');
     if (!container) {
-      // create and insert above video grid (if exists) or at top
       container = document.createElement('div');
       container.id = 'filters-container';
       container.className = 'filters-row';
       const main = document.getElementById('main-content') || document.getElementById('app-container');
-      if (main) {
-        main.prepend(container);
-      } else {
-        document.body.prepend(container);
-      }
+      if (main) main.prepend(container);
+      else document.body.prepend(container);
     }
+
     container.innerHTML = `
       <select id="filter-content"></select>
       <select id="filter-season"></select>
@@ -102,16 +95,14 @@
 
     populate(fContent, lists.contents);
 
-    // initial populate for content = All
-    populate(fSeason, lists.seasonsByContent['All'] || ['All']);
+    const firstContent = lists.contents[0] || 'All';
+    populate(fSeason, lists.seasonsByContent[firstContent] || ['All']);
     populate(fEpisode, ['All']);
 
-    // events
     fContent.addEventListener('change', () => {
       const c = fContent.value;
       const seasons = lists.seasonsByContent[c] || ['All'];
       populate(fSeason, seasons);
-      // populate episodes based on first season
       const eps = lists.episodesByContentSeason[c] ? (lists.episodesByContentSeason[c][seasons[0]] || ['All']) : ['All'];
       populate(fEpisode, eps);
       triggerChange();
@@ -143,7 +134,6 @@
     return (s+'').replace(/[&<>"']/g, function(m){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]);});
   }
 
-  // Debounce helper
   function debounce(fn, wait) {
     let t;
     return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), wait); };
@@ -165,17 +155,13 @@
     });
   }
 
-  // public API
   window.filterModule = {
     initFilters: function(videos, onChangeCallback) {
       _videos = (videos||[]).slice();
       _cb = onChangeCallback;
       const lists = buildUniqueLists(_videos);
       renderFilterControls(lists);
-      // trigger initial change
-      if (_cb) {
-        _cb({ content: 'All', season: 'All', episode: 'All', search: '' });
-      }
+      if (_cb) _cb({ content: 'All', season: 'All', episode: 'All', search: '' });
     },
     updateFiltersFromVideos: function(videos) {
       _videos = (videos||[]).slice();
