@@ -1,169 +1,139 @@
-// --- Firebase Initialization ---
-const firebaseConfig = {
-  apiKey: "AIzaSyCh3l_nm0h0rftal0-NZH0Nl5Vuf0MU_gM",
-  authDomain: "noteapp-1ad69.firebaseapp.com",
-  databaseURL: "https://noteapp-1ad69-default-rtdb.firebaseio.com",
-  projectId: "noteapp-1ad69",
-  storageBucket: "noteapp-1ad69.appspot.com",
-  messagingSenderId: "33056669455",
-  appId: "1:33056669455:web:21b7f7f58847112b9a487a",
-  measurementId: "G-RXS945QBFY"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+/**********************************
+  APP.JS — FIXED VERSION
+**********************************/
 
-let isLoggedIn = false;
-let botToken = null;
+const BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN";  // ← यहाँ अपना Bot Token डालो
 
-const appContainer = document.getElementById('app-container');
+function buildVideoUrl(fileId) {
+    return fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!d.ok || !d.result.file_path) throw new Error("Invalid file_id");
+        return `https://api.telegram.org/file/bot${BOT_TOKEN}/${d.result.file_path}`;
+      });
+}
 
-// --- Auth Screen ---
-function renderAuthScreen() {
-    appContainer.innerHTML = `
-        <div class="auth-container">
-            <h2>Login</h2>
-            <input type="email" id="auth-email" placeholder="Email" class="input-field">
-            <input type="password" id="auth-password" placeholder="Password" class="input-field">
-            <button id="auth-login" class="btn primary-btn">Login</button>
-        </div>
+function renderApp(user) {
+    const app = document.getElementById("main-content");
+
+    app.innerHTML = `
+      <header>
+        <h1>All Videos</h1>
+        <nav>
+          <button id="logout-btn" class="btn secondary-btn">Logout</button>
+        </nav>
+      </header>
+
+      <div id="videos-grid" class="grid-layout"></div>
     `;
-    document.getElementById('auth-login').addEventListener('click', loginUser);
+
+    document.getElementById("logout-btn").onclick = () => firebase.auth().signOut();
+
+    loadVideos();
 }
 
-// --- Firebase Email Login ---
-function loginUser() {
-    const email = document.getElementById('auth-email').value;
-    const pass = document.getElementById('auth-password').value;
+function loadVideos() {
+    const ref = firebase.database().ref("videos");
+    ref.on("value", snap => {
+        const data = snap.val() || {};
+        let videos = Object.values(data);
 
-    firebase.auth().signInWithEmailAndPassword(email, pass)
-    .then(userCred => {
-        if(userCred.user.emailVerified){
-            isLoggedIn = true;
-            navigate('home');
-        } else {
-            alert("Please verify your email first!");
-            userCred.user.sendEmailVerification()
-            .then(()=> alert("Verification email sent!"))
-            .catch(err=> alert(err.message));
-        }
-    })
-    .catch(err=> alert(err.message));
-}
-
-// --- Telegram URL ---
-function getTelegramFileURL(filePath){
-    if(!filePath || !botToken) return null;
-    return `https://api.telegram.org/file/bot${botToken}/${filePath}`;
-}
-
-// --- Fetch videos ---
-function fetchVideos(callback){
-    // Get bot token first
-    db.ref('TelegramBot').once('value').then(snap=>{
-        botToken = Object.values(snap.val())[0];
-        db.ref('videos').once('value').then(snap=>{
-            const videos = [];
-            snap.forEach(child=>{
-                const val = child.val();
-                videos.push({
-                    videoId: val.videoId,
-                    thumbnailId: val.thumbnailId,
-                    title: val.title,
-                    description: val.description
-                });
-            });
-            callback(videos);
+        videos.forEach(v => {
+            if (!v.id) v.id = Math.random().toString(36).substr(2,8);
         });
-    });
-}
 
-// --- Render Home ---
-function renderHomeScreen() {
-    fetchVideos(videos=>{
-        // Sort by description
+        videos.forEach(v => {
+            if (!v.meta) {
+                const desc = v.description || "";
+                const parts = desc.split("/");
+                v.meta = {
+                    content: parts[0] || "Unknown",
+                    season: parts[1] || "S0",
+                    episode: parts[2] || "E0"
+                };
+            }
+        });
+
         videos.sort((a,b)=>{
-            const [c1,s1,e1] = a.description.split('/');
-            const [c2,s2,e2] = b.description.split('/');
-            if(c1!==c2) return c1.localeCompare(c2);
-            if(s1!==s2) return s1.localeCompare(s2);
-            return e1.localeCompare(e2);
+          const A = a.meta || {};
+          const B = b.meta || {};
+
+          const sA = parseInt((A.season||"").replace(/\D/g,'')) || 0;
+          const sB = parseInt((B.season||"").replace(/\D/g,'')) || 0;
+
+          const eA = parseInt((A.episode||"").replace(/\D/g,'')) || 0;
+          const eB = parseInt((B.episode||"").replace(/\D/g,'')) || 0;
+
+          if (A.content !== B.content) return (A.content||"").localeCompare(B.content||"");
+          if (sA !== sB) return sA - sB;
+          return eA - eB;
         });
 
-        const videoGrid = videos.map((v,i)=>{
-            const thumb = getTelegramFileURL(v.thumbnailId);
-            return `
-                <div class="video-card" data-index="${i}">
-                    <img src="${thumb}" class="video-thumbnail">
-                    <div class="video-title">${v.title}</div>
-                    <div class="video-meta">${v.description.split('/').join(' | ')}</div>
-                </div>
-            `;
-        }).join('');
-
-        appContainer.innerHTML = `
-            <div id="video-grid" class="grid-layout">${videoGrid}</div>
-        `;
-
-        // Init filters
-        filterModule.initFilters(videos, (filtered)=>{
-            renderFilteredVideos(filtered);
-        });
-
-        // Video click event
-        document.querySelectorAll('.video-card').forEach(card=>{
-            card.addEventListener('click', ()=>{
-                const idx = card.dataset.index;
-                playVideo(videos[idx]);
-            });
+        filterModule.initFilters(videos, filters => {
+            const filtered = filterModule.applyFilters(filters);
+            displayVideos(filtered);
         });
     });
 }
 
-// --- Filtered render ---
-function renderFilteredVideos(filtered){
-    const grid = document.getElementById('video-grid');
-    grid.innerHTML = filtered.map((v,i)=>{
-        const thumb = getTelegramFileURL(v.thumbnailId);
-        return `
-            <div class="video-card" data-index="${i}">
-                <img src="${thumb}" class="video-thumbnail">
-                <div class="video-title">${v.title}</div>
-                <div class="video-meta">${v.description.split('/').join(' | ')}</div>
-            </div>
-        `;
-    }).join('');
+function displayVideos(videos) {
+    const grid = document.getElementById("videos-grid");
+    grid.innerHTML = "";
 
-    // Re-attach click events
-    document.querySelectorAll('.video-card').forEach((card,i)=>{
-        card.addEventListener('click', ()=> playVideo(filtered[i]));
+    videos.forEach(video => {
+        const card = document.createElement("div");
+        card.className = "video-card";
+
+        const thumb = video.thumbnailId
+            ? `https://api.telegram.org/file/bot${BOT_TOKEN}/${video.thumbnailId}`
+            : "";
+
+        card.innerHTML = `
+          <img class="video-thumbnail" src="${thumb}" />
+          <div class="video-title">${video.title || "Untitled"}</div>
+        `;
+
+        card.onclick = () => openVideoPlayer(video);
+        grid.appendChild(card);
     });
 }
 
-// --- Video Play Dialog ---
-function playVideo(video){
-    const dialog = document.getElementById('video-dialog');
-    const title = document.getElementById('player-title');
-    const player = document.getElementById('player-video');
+function openVideoPlayer(video) {
+    const backdrop = document.getElementById("bs-backdrop");
+    const sheet = document.getElementById("bs-sheet");
+    const wrap = document.getElementById("bs-player-wrap");
 
-    title.textContent = video.title;
-    player.src = getTelegramFileURL(video.videoId);
+    document.getElementById("bs-title").textContent = video.title;
+    document.getElementById("bs-meta").textContent =
+      `${video.meta.content} — ${video.meta.season} — ${video.meta.episode}`;
 
-    dialog.classList.remove('hidden');
+    wrap.innerHTML = `<div>Loading video...</div>`;
 
-    document.getElementById('close-dialog').onclick = ()=>{
-        dialog.classList.add('hidden');
-        player.pause();
-        player.src = '';
-    };
+    backdrop.style.display = "flex";
+
+    setTimeout(() => sheet.classList.add("open"), 20);
+
+    buildVideoUrl(video.videoId).then(url => {
+        wrap.innerHTML = `
+          <video class="video-element" controls autoplay src="${url}"></video>
+        `;
+    });
 }
 
-// --- Navigation ---
-function navigate(screen){
-    if(!isLoggedIn) return renderAuthScreen();
-    if(screen==='home') renderHomeScreen();
+document.getElementById("bs-close").onclick = closeSheet;
+document.getElementById("bs-backdrop").onclick = e => {
+    if (e.target.id === "bs-backdrop") closeSheet();
+};
+
+function closeSheet() {
+    const sheet = document.getElementById("bs-sheet");
+    const backdrop = document.getElementById("bs-backdrop");
+
+    sheet.classList.remove("open");
+    setTimeout(() => { backdrop.style.display = "none"; }, 300);
 }
 
-// --- Init ---
-document.addEventListener('DOMContentLoaded', ()=>{
-    navigate('home');
+firebase.auth().onAuthStateChanged(user => {
+    if (user) renderApp(user);
+    else document.getElementById("main-content").innerHTML = "Not logged in";
 });
